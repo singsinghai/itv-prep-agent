@@ -39,6 +39,7 @@ class InterviewPrepService:
         self,
         user_query: str,
         jd_text: str,
+        jd_url: str | None,
         company_name: str | None,
         cv_text: str | None,
         user_id: str | None,
@@ -52,6 +53,7 @@ class InterviewPrepService:
             self._run_job_company_flow(
                 user_query=user_query,
                 jd_text=jd_text,
+                jd_url=jd_url,
                 company_name=company_name,
                 cv_text=cv_text,
             )
@@ -110,6 +112,7 @@ class InterviewPrepService:
         requirements = await self._enrich_strategy_from_extracted_experiences(
             user_query=user_query,
             jd_text=jd_text,
+            jd_url=jd_url,
             resolved_company=resolved_company,
             company_source=company_source,
             requirements=requirements,
@@ -187,6 +190,7 @@ class InterviewPrepService:
         self,
         user_query: str,
         jd_text: str,
+        jd_url: str | None,
         company_name: str | None,
         cv_text: str | None,
     ) -> tuple:
@@ -198,6 +202,7 @@ class InterviewPrepService:
                 self._planner_service.resolve_company,
                 company_name,
                 jd_text,
+                jd_url,
             )
 
         research_enabled = bool(resolved_company)
@@ -205,6 +210,7 @@ class InterviewPrepService:
             self._planner_service.extract_job_requirements,
             user_query,
             jd_text,
+            jd_url,
             resolved_company,
             company_source,
             cv_text,
@@ -243,6 +249,7 @@ class InterviewPrepService:
         self,
         user_query: str,
         jd_text: str,
+        jd_url: str | None,
         resolved_company: str | None,
         company_source: str,
         requirements: JobRequirementExtraction,
@@ -253,6 +260,7 @@ class InterviewPrepService:
                 self._planner_service.enrich_interview_strategy,
                 user_query,
                 jd_text,
+                jd_url,
                 resolved_company,
                 company_source,
                 requirements,

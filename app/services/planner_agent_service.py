@@ -29,6 +29,7 @@ class PlannerAgentService:
                     "You are an interview-prep planner. "
                     "Extract factual role information from JD and build a practical interview roadmap "
                     "grounded in JD + candidate CV context. "
+                    "When JD URL is provided, use it directly as the primary source for JD content interpretation. "
                     "Avoid generic advice. Tie revision items and questions to concrete JD requirements "
                     "and the candidate's past experience. "
                     "If JD explicitly mentions interview rounds/process, set interview_process_source='jd' "
@@ -47,6 +48,7 @@ class PlannerAgentService:
                     "User query:\n{user_query}\n\n"
                     "Resolved company name: {resolved_company}\n"
                     "Company source: {company_source}\n\n"
+                    "JD URL (optional): {jd_url}\n\n"
                     "Selected JD context:\n{jd_context}\n\n"
                     "Candidate CV experience summary:\n{cv_context}",
                 ),
@@ -58,9 +60,10 @@ class PlannerAgentService:
                     "system",
                     "Extract the real hiring company name from JD text. "
                     "If unresolved or unclear, return null for company_name. "
+                    "When JD URL is provided, use that URL as source context. "
                     "Do not guess.",
                 ),
-                ("human", "JD content:\n{jd_context}"),
+                ("human", "JD URL (optional): {jd_url}\n\nJD content:\n{jd_context}"),
             ]
         )
         self._strategy_enrichment_prompt = ChatPromptTemplate.from_messages(
@@ -92,6 +95,7 @@ class PlannerAgentService:
                     "User query:\n{user_query}\n\n"
                     "Resolved company: {resolved_company}\n"
                     "Company source: {company_source}\n\n"
+                    "JD URL (optional): {jd_url}\n\n"
                     "JD context:\n{jd_context}\n\n"
                     "Extracted job requirements:\n{requirements_context}\n\n"
                     "Extracted candidate experiences (structured):\n{experiences_context}\n\n"
@@ -109,11 +113,16 @@ class PlannerAgentService:
         )
 
     @timed("planner.resolve_company")
-    def resolve_company(self, user_company: str | None, jd_text: str) -> tuple[str | None, Literal["request", "jd", "unknown"]]:
+    def resolve_company(
+        self,
+        user_company: str | None,
+        jd_text: str,
+        jd_url: str | None,
+    ) -> tuple[str | None, Literal["request", "jd", "unknown"]]:
         if user_company and user_company.strip():
             return user_company.strip(), "request"
 
-        from_jd = self._extract_company_from_jd_llm(jd_text)
+        from_jd = self._extract_company_from_jd_llm(jd_text, jd_url)
         if from_jd:
             return from_jd, "jd"
         return None, "unknown"
@@ -123,6 +132,7 @@ class PlannerAgentService:
         self,
         user_query: str,
         jd_text: str,
+        jd_url: str | None,
         resolved_company: str | None,
         company_source: str,
         cv_text: str | None,
@@ -130,7 +140,7 @@ class PlannerAgentService:
         if not self._settings.openai_api_key:
             raise ValueError("Missing OPENAI_API_KEY environment variable for planner agent")
 
-        jd_context = self._select_jd_context(jd_text=jd_text, user_query=user_query)
+        jd_context = self._select_jd_context(jd_text=jd_text, jd_url=jd_url, user_query=user_query)
         cv_context = self._format_cv_text_context(cv_text)
 
         llm = self._build_llm()
@@ -140,6 +150,7 @@ class PlannerAgentService:
                 "user_query": user_query,
                 "resolved_company": resolved_company or "Not identified",
                 "company_source": company_source,
+                "jd_url": jd_url or "Not provided",
                 "jd_context": jd_context,
                 "cv_context": cv_context,
             }
@@ -150,12 +161,13 @@ class PlannerAgentService:
         self,
         user_query: str,
         jd_text: str,
+        jd_url: str | None,
         resolved_company: str | None,
         company_source: str,
         requirements: JobRequirementExtraction,
         job_experiences: list[JobExperience],
     ) -> InterviewStrategyExtraction:
-        jd_context = self._select_jd_context(jd_text=jd_text, user_query=user_query)
+        jd_context = self._select_jd_context(jd_text=jd_text, jd_url=jd_url, user_query=user_query)
         llm = self._build_llm()
         chain = self._strategy_enrichment_prompt | llm.with_structured_output(InterviewStrategyExtraction)
         return chain.invoke(
@@ -163,6 +175,7 @@ class PlannerAgentService:
                 "user_query": user_query,
                 "resolved_company": resolved_company or "Not identified",
                 "company_source": company_source,
+                "jd_url": jd_url or "Not provided",
                 "jd_context": jd_context,
                 "requirements_context": self._format_requirements_context(requirements),
                 "experiences_context": self._format_job_experience_context(job_experiences),
@@ -171,11 +184,11 @@ class PlannerAgentService:
         )
 
     @timed("planner.extract_company_from_jd_llm")
-    def _extract_company_from_jd_llm(self, jd_text: str) -> str | None:
+    def _extract_company_from_jd_llm(self, jd_text: str, jd_url: str | None) -> str | None:
         llm = self._build_llm()
         chain = self._company_extraction_prompt | llm.with_structured_output(CompanyExtractionResult)
-        context = jd_text[: self._settings.max_jd_chars]
-        result = chain.invoke({"jd_context": context})
+        context = self._select_jd_context(jd_text=jd_text, jd_url=jd_url, user_query="")
+        result = chain.invoke({"jd_url": jd_url or "Not provided", "jd_context": context})
         if not result.company_name:
             return None
         candidate = re.sub(r"\s+", " ", result.company_name).strip(" .,:;|-")
@@ -183,7 +196,10 @@ class PlannerAgentService:
             return None
         return candidate
 
-    def _select_jd_context(self, jd_text: str, user_query: str) -> str:
+    def _select_jd_context(self, jd_text: str, jd_url: str | None, user_query: str) -> str:
+        if jd_url:
+            return f"JD URL: {jd_url}"
+
         max_chars = self._settings.max_jd_chars
         if len(jd_text) <= max_chars:
             return jd_text

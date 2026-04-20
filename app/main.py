@@ -1,6 +1,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import logging
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from app.config import settings
@@ -61,20 +62,25 @@ def health() -> dict[str, str]:
 @timed("endpoint.interview_prep_query")
 async def interview_prep_query(
     query: str = Form(..., min_length=2),
-    jd_file: UploadFile = File(...),
+    jd_file: UploadFile | None = File(default=None),
+    jd_url: str | None = Form(default=None),
     cv_file: UploadFile | None = File(default=None),
     company_name: str | None = Form(default=None),
     user_id: str | None = Form(default=None),
 ) -> InterviewPrepResponse:
+    jd_url = _normalize_jd_url(jd_url)
+    if jd_file is None and jd_url is None:
+        raise HTTPException(status_code=400, detail="Provide either jd_file or jd_url")
+
     try:
-        jd_text, cv_text = await _parse_inputs_parallel(jd_file, cv_file)
+        jd_text, cv_text = await _parse_inputs_parallel(jd_file, jd_url, cv_file)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to process JD/CV file: {exc}") from exc
 
     try:
-        return await _run_interview_prep_process(query, jd_text, company_name, cv_text, user_id)
+        return await _run_interview_prep_process(query, jd_text, jd_url, company_name, cv_text, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
@@ -83,10 +89,16 @@ async def interview_prep_query(
 
 @timed("endpoint.parse_inputs_parallel")
 async def _parse_inputs_parallel(
-    jd_file: UploadFile,
+    jd_file: UploadFile | None,
+    jd_url: str | None,
     cv_file: UploadFile | None,
 ) -> tuple[str, str | None]:
-    jd_task = document_parser_service.extract_text(jd_file, file_label="JD")
+    if jd_url:
+        jd_task = _jd_text_from_url(jd_url)
+    elif jd_file is not None:
+        jd_task = document_parser_service.extract_text(jd_file, file_label="JD")
+    else:
+        raise ValueError("Provide either jd_file or jd_url")
     cv_task = document_parser_service.extract_text(cv_file, file_label="CV") if cv_file is not None else _empty_cv_text()
     return await asyncio.gather(jd_task, cv_task)
 
@@ -95,6 +107,7 @@ async def _parse_inputs_parallel(
 async def _run_interview_prep_process(
     query: str,
     jd_text: str,
+    jd_url: str | None,
     company_name: str | None,
     cv_text: str | None,
     user_id: str | None,
@@ -102,6 +115,7 @@ async def _run_interview_prep_process(
     return await interview_prep_service.process(
         user_query=query,
         jd_text=jd_text,
+        jd_url=jd_url,
         company_name=company_name,
         cv_text=cv_text,
         user_id=user_id,
@@ -110,3 +124,17 @@ async def _run_interview_prep_process(
 
 async def _empty_cv_text() -> str | None:
     return None
+
+
+async def _jd_text_from_url(jd_url: str) -> str:
+    return jd_url
+
+
+def _normalize_jd_url(jd_url: str | None) -> str | None:
+    if not jd_url or not jd_url.strip():
+        return None
+    candidate = jd_url.strip()
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="jd_url must be a valid http/https URL")
+    return candidate
