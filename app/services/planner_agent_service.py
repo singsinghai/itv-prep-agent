@@ -1,4 +1,5 @@
 import re
+import logging
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -7,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.config import Settings
 from app.models.cv_models import JobExperience
 from app.models.planner_decision import PlannerDecision
+from app.utils.timing import timed
 
 
 class CompanyExtractionResult(BaseModel):
@@ -17,6 +19,7 @@ class CompanyExtractionResult(BaseModel):
 class PlannerAgentService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._logger = logging.getLogger(__name__)
         self._prompt = ChatPromptTemplate.from_messages(
             [
                 (
@@ -47,6 +50,7 @@ class PlannerAgentService:
             ]
         )
 
+    @timed("planner.plan")
     def plan(
         self,
         user_query: str,
@@ -82,7 +86,7 @@ class PlannerAgentService:
     def _build_llm(self) -> ChatOpenAI:
         return ChatOpenAI(
             api_key=self._settings.openai_api_key,
-            model=self._settings.openai_planner_model,
+            model=self._settings.openai_large_model,
             temperature=0,
         )
 
@@ -95,6 +99,7 @@ class PlannerAgentService:
             return from_jd, "jd"
         return None, "unknown"
 
+    @timed("planner.extract_company_from_jd_llm")
     def _extract_company_from_jd_llm(self, jd_text: str) -> str | None:
         llm = self._build_llm()
         chain = self._company_extraction_prompt | llm.with_structured_output(CompanyExtractionResult)

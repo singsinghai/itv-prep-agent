@@ -15,6 +15,9 @@ class InterviewPrepResponse(BaseModel):
     key_qualifications: list[str]
     tech_stacks: list[str]
     jd_gaps_or_ambiguities: list[str]
-    next_step_plan: list[str]
+    core_products: list[str]
+    ceo: str | None
+    culture: list[str]
+    company_research_enabled: bool
     answer: str | None = None
     raw: dict[str, Any] | None = None

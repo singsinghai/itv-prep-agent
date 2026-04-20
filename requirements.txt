@@ -5,3 +5,4 @@ python-multipart
 PyMuPDF
 langchain
 langchain-openai
+perplexityai

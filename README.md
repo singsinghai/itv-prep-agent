@@ -14,10 +14,13 @@ Example:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_PLANNER_MODEL=gpt-4.1-mini
-OPENAI_CV_EXTRACTOR_MODEL=gpt-4.1-mini
+OPENAI_LARGE_MODEL=gpt-4.1
+OPENAI_SMALL_MODEL=gpt-4.1-mini
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+PERPLEXITY_MODEL=sonar
 MAX_JD_CHARS=4000
 MAX_CV_CHARS=6000
+MAX_RESEARCH_CHARS=8000
 ```
 
 ## 2) Run locally
@@ -62,7 +65,12 @@ Behavior:
   - tech stacks
   - JD gaps or ambiguities
 - JD context selection is relevance-based chunking (keyword/query scoring), not plain first-N slicing.
-- Post-planner Perplexity company research is drafted in response as next-step plan, but not executed yet.
+- If company is resolved, Perplexity company research runs right after planning to extract:
+  - core products
+  - CEO
+  - culture
+- If company is unresolved, Perplexity research is skipped.
+- Step-level logs include function calls and execution times.
 - Current JD parser support: `.pdf`, `.md`, `.txt` (image parsing is intentionally disabled for now).
 
 Health check:

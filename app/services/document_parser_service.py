@@ -2,14 +2,18 @@ from io import BytesIO
 
 import fitz
 from fastapi import UploadFile
+import logging
 
 from app.config import Settings
+from app.utils.timing import timed
 
 
 class DocumentParserService:
     def __init__(self, settings: Settings) -> None:
         _ = settings
+        self._logger = logging.getLogger(__name__)
 
+    @timed("document_parser.extract_text")
     async def extract_text(self, input_file: UploadFile, file_label: str = "Document") -> str:
         filename = (input_file.filename or "").lower()
         data = await input_file.read()
@@ -25,6 +29,7 @@ class DocumentParserService:
 
         raise ValueError("Unsupported file type. Use .pdf, .md, .txt, .png, .jpg, .jpeg, or .webp")
 
+    @timed("document_parser.extract_pdf_text")
     def _extract_pdf_text(self, data: bytes) -> str:
         try:
             text_chunks: list[str] = []
