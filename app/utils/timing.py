@@ -14,7 +14,7 @@ def timed(step_name: str | None = None) -> Callable[[Callable[..., Any]], Callab
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 logger = _resolve_logger(func, args)
                 start = perf_counter()
-                logger.info("Step started: %s", name)
+                # logger.info("Step started: %s", name)
                 try:
                     return await func(*args, **kwargs)
                 finally:
@@ -27,7 +27,7 @@ def timed(step_name: str | None = None) -> Callable[[Callable[..., Any]], Callab
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             logger = _resolve_logger(func, args)
             start = perf_counter()
-            logger.info("Step started: %s", name)
+            # logger.info("Step started: %s", name)
             try:
                 return func(*args, **kwargs)
             finally:

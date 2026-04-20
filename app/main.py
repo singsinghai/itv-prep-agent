@@ -6,6 +6,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from app.config import settings
 from app.models.interview_prep_response import InterviewPrepResponse
 from app.services.company_research_service import CompanyResearchService
+from app.services.artifact_export_service import ArtifactExportService
 from app.services.cv_extraction_service import CVExtractionService
 from app.services.document_parser_service import DocumentParserService
 from app.services.interview_prep_service import InterviewPrepService
@@ -25,10 +26,12 @@ document_parser_service = DocumentParserService(settings)
 cv_extraction_service = CVExtractionService(settings=settings)
 planner_service = PlannerAgentService(settings)
 company_research_service = CompanyResearchService(settings)
+artifact_export_service = ArtifactExportService(output_root=settings.output_data_dir)
 interview_prep_service = InterviewPrepService(
     planner_service=planner_service,
     company_research_service=company_research_service,
     cv_extraction_service=cv_extraction_service,
+    artifact_export_service=artifact_export_service,
 )
 
 
@@ -61,6 +64,7 @@ async def interview_prep_query(
     jd_file: UploadFile = File(...),
     cv_file: UploadFile | None = File(default=None),
     company_name: str | None = Form(default=None),
+    user_id: str | None = Form(default=None),
 ) -> InterviewPrepResponse:
     try:
         jd_text, cv_text = await _parse_inputs_parallel(jd_file, cv_file)
@@ -70,7 +74,7 @@ async def interview_prep_query(
         raise HTTPException(status_code=400, detail=f"Failed to process JD/CV file: {exc}") from exc
 
     try:
-        return await _run_interview_prep_process(query, jd_text, company_name, cv_text)
+        return await _run_interview_prep_process(query, jd_text, company_name, cv_text, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
@@ -93,12 +97,14 @@ async def _run_interview_prep_process(
     jd_text: str,
     company_name: str | None,
     cv_text: str | None,
+    user_id: str | None,
 ) -> InterviewPrepResponse:
     return await interview_prep_service.process(
         user_query=query,
         jd_text=jd_text,
         company_name=company_name,
         cv_text=cv_text,
+        user_id=user_id,
     )
 
 

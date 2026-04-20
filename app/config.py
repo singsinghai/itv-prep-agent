@@ -18,6 +18,7 @@ class Settings:
     max_cv_chars: int
     max_research_chars: int
     max_thread_workers: int
+    output_data_dir: str
 
 
 def load_settings() -> Settings:
@@ -31,6 +32,7 @@ def load_settings() -> Settings:
         max_cv_chars=int(os.getenv("MAX_CV_CHARS", "6000")),
         max_research_chars=int(os.getenv("MAX_RESEARCH_CHARS", "8000")),
         max_thread_workers=int(os.getenv("MAX_THREAD_WORKERS", "32")),
+        output_data_dir=os.getenv("OUTPUT_DATA_DIR", "data"),
     )
 
 
