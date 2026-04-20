@@ -9,14 +9,20 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
-    perplexity_api_key: str | None
-    perplexity_preset: str
+    openai_api_key: str | None
+    openai_planner_model: str
+    openai_cv_extractor_model: str
+    max_jd_chars: int
+    max_cv_chars: int
 
 
 def load_settings() -> Settings:
     return Settings(
-        perplexity_api_key=os.getenv("PERPLEXITY_API_KEY"),
-        perplexity_preset=os.getenv("PERPLEXITY_PRESET", "pro-search"),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        openai_planner_model=os.getenv("OPENAI_PLANNER_MODEL", "gpt-4.1-mini"),
+        openai_cv_extractor_model=os.getenv("OPENAI_CV_EXTRACTOR_MODEL", "gpt-4.1-mini"),
+        max_jd_chars=int(os.getenv("MAX_JD_CHARS", "4000")),
+        max_cv_chars=int(os.getenv("MAX_CV_CHARS", "6000")),
     )
 
 
