@@ -1,4 +1,5 @@
 from io import BytesIO
+import asyncio
 
 import fitz
 from fastapi import UploadFile
@@ -13,7 +14,7 @@ class DocumentParserService:
         _ = settings
         self._logger = logging.getLogger(__name__)
 
-    @timed("document_parser.extract_text")
+    # @timed("document_parser.extract_text")
     async def extract_text(self, input_file: UploadFile, file_label: str = "Document") -> str:
         filename = (input_file.filename or "").lower()
         data = await input_file.read()
@@ -23,13 +24,13 @@ class DocumentParserService:
         if filename.endswith(".md") or filename.endswith(".txt"):
             return data.decode("utf-8", errors="ignore")
         if filename.endswith(".pdf"):
-            return self._extract_pdf_text(data)
+            return await asyncio.to_thread(self._extract_pdf_text, data)
         if filename.endswith((".png", ".jpg", ".jpeg", ".webp")):
             raise ValueError(f"Image parsing is not supported in PyMuPDF mode yet. Please provide PDF/MD/TXT for {file_label}.")
 
         raise ValueError("Unsupported file type. Use .pdf, .md, .txt, .png, .jpg, .jpeg, or .webp")
 
-    @timed("document_parser.extract_pdf_text")
+    # @timed("document_parser.extract_pdf_text")
     def _extract_pdf_text(self, data: bytes) -> str:
         try:
             text_chunks: list[str] = []

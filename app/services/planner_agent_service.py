@@ -1,13 +1,13 @@
 import re
 import logging
+from typing import Literal
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 from app.config import Settings
-from app.models.cv_models import JobExperience
-from app.models.planner_decision import PlannerDecision
+from app.models.planner_decision import JobRequirementExtraction
 from app.utils.timing import timed
 
 
@@ -20,7 +20,7 @@ class PlannerAgentService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._logger = logging.getLogger(__name__)
-        self._prompt = ChatPromptTemplate.from_messages(
+        self._requirement_prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
@@ -50,27 +50,41 @@ class PlannerAgentService:
             ]
         )
 
-    @timed("planner.plan")
-    def plan(
+    def _build_llm(self) -> ChatOpenAI:
+        return ChatOpenAI(
+            api_key=self._settings.openai_api_key,
+            model=self._settings.openai_large_model,
+            temperature=0,
+        )
+
+    @timed("planner.resolve_company")
+    def resolve_company(self, user_company: str | None, jd_text: str) -> tuple[str | None, Literal["request", "jd", "unknown"]]:
+        if user_company and user_company.strip():
+            return user_company.strip(), "request"
+
+        from_jd = self._extract_company_from_jd_llm(jd_text)
+        if from_jd:
+            return from_jd, "jd"
+        return None, "unknown"
+
+    @timed("planner.extract_job_requirements")
+    def extract_job_requirements(
         self,
         user_query: str,
         jd_text: str,
-        company_name: str | None,
-        job_experiences: list[JobExperience],
-    ) -> PlannerDecision:
+        resolved_company: str | None,
+        company_source: str,
+        cv_text: str | None,
+    ) -> JobRequirementExtraction:
         if not self._settings.openai_api_key:
             raise ValueError("Missing OPENAI_API_KEY environment variable for planner agent")
 
-        resolved_company, company_source = self._resolve_company(
-            user_company=company_name,
-            jd_text=jd_text,
-        )
         jd_context = self._select_jd_context(jd_text=jd_text, user_query=user_query)
-        cv_context = self._format_cv_context(job_experiences)
+        cv_context = self._format_cv_text_context(cv_text)
 
         llm = self._build_llm()
-        chain = self._prompt | llm.with_structured_output(PlannerDecision)
-        decision = chain.invoke(
+        chain = self._requirement_prompt | llm.with_structured_output(JobRequirementExtraction)
+        return chain.invoke(
             {
                 "user_query": user_query,
                 "resolved_company": resolved_company or "Not identified",
@@ -79,25 +93,6 @@ class PlannerAgentService:
                 "cv_context": cv_context,
             }
         )
-        decision.company_name = resolved_company
-        decision.company_source = company_source
-        return decision
-
-    def _build_llm(self) -> ChatOpenAI:
-        return ChatOpenAI(
-            api_key=self._settings.openai_api_key,
-            model=self._settings.openai_large_model,
-            temperature=0,
-        )
-
-    def _resolve_company(self, user_company: str | None, jd_text: str) -> tuple[str | None, str]:
-        if user_company and user_company.strip():
-            return user_company.strip(), "request"
-
-        from_jd = self._extract_company_from_jd_llm(jd_text)
-        if from_jd:
-            return from_jd, "jd"
-        return None, "unknown"
 
     @timed("planner.extract_company_from_jd_llm")
     def _extract_company_from_jd_llm(self, jd_text: str) -> str | None:
@@ -167,28 +162,7 @@ class PlannerAgentService:
         picked.sort(key=lambda item: item[0])
         return "\n\n".join(part for _, part in picked).strip()
 
-    def _format_cv_context(self, job_experiences: list[JobExperience]) -> str:
-        if not job_experiences:
+    def _format_cv_text_context(self, cv_text: str | None) -> str:
+        if not cv_text or not cv_text.strip():
             return "No CV provided."
-
-        lines: list[str] = []
-        for idx, exp in enumerate(job_experiences[:8], start=1):
-            header = f"{idx}. Role: {exp.role}"
-            if exp.company:
-                header += f" | Company: {exp.company}"
-            if exp.period:
-                header += f" | Period: {exp.period}"
-            lines.append(header)
-            if exp.tech_stack:
-                lines.append(f"   Tech stack: {', '.join(exp.tech_stack[:12])}")
-            for p_idx, project in enumerate(exp.projects[:4], start=1):
-                lines.append(f"   Project {p_idx}: {project.name}")
-                if project.main_work:
-                    lines.append(f"     Main work: {'; '.join(project.main_work[:3])}")
-                if project.key_improvements:
-                    lines.append(f"     Key improvements: {'; '.join(project.key_improvements[:3])}")
-                if project.key_designs:
-                    lines.append(f"     Key designs: {'; '.join(project.key_designs[:3])}")
-                if project.notable_results:
-                    lines.append(f"     Results: {'; '.join(project.notable_results[:3])}")
-        return "\n".join(lines)
+        return cv_text[: self._settings.max_cv_chars]

@@ -1,17 +1,7 @@
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
-class PlannerDecision(BaseModel):
-    company_name: str | None = Field(
-        default=None,
-        description="Resolved target company name when available.",
-    )
-    company_source: Literal["request", "jd", "unknown"] = Field(
-        ...,
-        description="Where the company name came from.",
-    )
+class JobRequirementExtraction(BaseModel):
     reason: str = Field(..., description="Short explanation of planning assumptions.")
     scope_of_work: list[str] = Field(
         default_factory=list,

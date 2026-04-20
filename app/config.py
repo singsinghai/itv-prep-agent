@@ -17,18 +17,20 @@ class Settings:
     max_jd_chars: int
     max_cv_chars: int
     max_research_chars: int
+    max_thread_workers: int
 
 
 def load_settings() -> Settings:
     return Settings(
         openai_api_key=os.getenv("OPENAI_API_KEY"),
-        openai_large_model=os.getenv("OPENAI_LARGE_MODEL", "gpt-4.1-mini"),
-        openai_small_model=os.getenv("OPENAI_SMALL_MODEL", "gpt-4.1-mini"),
+        openai_large_model=os.getenv("OPENAI_LARGE_MODEL", "gpt-5.4"),
+        openai_small_model=os.getenv("OPENAI_SMALL_MODEL", "gpt-5.4-mini"),
         perplexity_api_key=os.getenv("PERPLEXITY_API_KEY"),
-        perplexity_model=os.getenv("PERPLEXITY_MODEL", "sonar"),
+        perplexity_model=os.getenv("PERPLEXITY_MODEL", "pro-search"),
         max_jd_chars=int(os.getenv("MAX_JD_CHARS", "4000")),
         max_cv_chars=int(os.getenv("MAX_CV_CHARS", "6000")),
         max_research_chars=int(os.getenv("MAX_RESEARCH_CHARS", "8000")),
+        max_thread_workers=int(os.getenv("MAX_THREAD_WORKERS", "32")),
     )
 
 
